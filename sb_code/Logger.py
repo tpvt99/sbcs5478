@@ -14,9 +14,6 @@ from tensorboardX import SummaryWriter
 
 import time
 import atexit
-import shutil
-import tensorflow as tf
-
 
 import json
 color2num = dict(
@@ -231,29 +228,3 @@ class Logger():
 
     def tf_board_log_scalar(self, scalar, name, step_):
         self._summ_writer.add_scalar('{}'.format(name), scalar, step_)
-
-    def setup_tf_checkpoint(self, checkpoint, max_to_keep):
-        """
-        Set up easy model saving for a single Tensorflow model.
-        Because PyTorch saving and loading is especially painless, this is
-        very minimal; we just need references to whatever we would like to
-        pickle. This is integrated into the logger because the logger
-        knows where the user would like to save information about this
-        training run.
-        Args:
-            what_to_save: Any Tensorflow model or serializable object containing
-                Tensorflow models.
-        """
-        self.tf_checkpoint = checkpoint
-        checkpoint_path = osp.join(self.output_dir, 'tf_checkpoint')
-        self.tf_checkpoint_manager = tf.train.CheckpointManager(self.tf_checkpoint,
-                                                                checkpoint_path, max_to_keep=max_to_keep)
-
-        if self.tf_checkpoint_manager.latest_checkpoint:
-            self.tf_checkpoint.restore(self.tf_checkpoint_manager.latest_checkpoint)
-            print('Latest checkpoint restored!!')
-
-    def save_checkpoint(self, checkpoint_number):
-        assert hasattr(self, 'tf_checkpoint_manager'), \
-            "First have to setup with self.setup_tf_checkpoint"
-        self.tf_checkpoint_manager.save(checkpoint_number=checkpoint_number)

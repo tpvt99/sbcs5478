@@ -2,10 +2,17 @@ import gym
 import cv2
 from gym import spaces
 import numpy as np
-# from src_mb.vae.model import VariationalAutoEncoder
 import os.path as osp
 from gym_duckietown.simulator import NotInLane, REWARD_INVALID_POSE
-PROJECT_PATH = osp.abspath(osp.dirname(osp.dirname(__file__)))
+from vae.model_torch import AutoEncoder
+from global_configuration import PROJECT_PATH
+import torch
+import numpy as np
+from torchvision import transforms
+from itertools import product
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+print('Using {} device'.format(device))
 
 class ResizeWrapper(gym.ObservationWrapper):
     def __init__(self, env=None, shape=(120, 160, 3)):
@@ -42,7 +49,7 @@ class RewardWrapper(gym.RewardWrapper):
 
     def reward(self, reward):
         if reward == REWARD_INVALID_POSE:
-            return -100
+            return -50.0
 
         # pos = self.env.cur_pos
         # angle = self.env.cur_angle
@@ -75,39 +82,65 @@ class RewardWrapper(gym.RewardWrapper):
         if reward > 0:
             reward += 10
         else:
-            reward += 4
-
+            reward += 2
         return reward
 
-# class FinalLayerObservationWrapper(gym.ObservationWrapper):
-#     def __init__(self, env=None, vae_loader_path = None, latent_dim: int=128):
-#         super(FinalLayerObservationWrapper, self).__init__(env)
-#         self.latent_dim = latent_dim
-#         self.vae = VariationalAutoEncoder(input_shape = self.observation_space.shape, latent_dim=self.latent_dim)
-#         if vae_loader_path is not None:
-#             self.vae.load_weights(vae_loader_path)
-#         else:
-#             self.vae.load_weights(osp.join(PROJECT_PATH, "src_mb", "vae", "vae_checkpoints", "latent_128", "vae_tr199"))
-#         self.encoder = self.vae.encoder
-#         self.encoder.trainable = False # set to not train
-#
-#         self.cur_angle_dim = 1 # HARD CODE
-#         self.speed_dim = 1 # HARD CODE
-#         self.cur_pos_dim = 3 # HARD CODE
-#
-#         self.observation_space.shape = (self.latent_dim,)
-#         self.observation_space = spaces.Box(0.0, 1.0, (self.latent_dim,), dtype=np.float32)
-#
-#     def observation(self, observation):
-#         #1. Check dimension
-#         if len(observation.shape) == 1 or len(observation.shape)==3:
-#             observation = observation[None]
-#         assert observation.shape[0] == 1, "There should be only 1 observation passing through this every time called"
-#         # 1. Extract first latent to go into Encoder
-#         encoded_observation = self.encoder(observation)
-#         encoded_observation = encoded_observation[0].numpy()
-#         # output_observation = np.concatenate([encoded_observation,
-#         #                                      self.env.unwrapped.cur_pos,
-#         #                                      np.array([self.env.unwrapped.speed]),
-#         #                                      np.array([self.env.unwrapped.cur_angle])])
-#         return encoded_observation
+class DiscreteWrapper(gym.ActionWrapper):
+    """
+    Duckietown environment with discrete actions (left, right, forward)
+    instead of continuous control
+    """
+
+    def __init__(self, env):
+        gym.ActionWrapper.__init__(self, env)
+        velocity_list = [0.1, 0.25, 0.35, 0.4, 0.5, 0.7, 0.9, 1.0]
+        steering_list = [-np.pi, -np.pi/8, -np.pi/2, -np.pi/4, 0, np.pi/4, np.pi/2, np.pi/8, np.pi]
+        action_list = list(product(velocity_list, steering_list))
+        self.action_dim = len(action_list)
+        self.index_to_actions = {key:val for key,val in enumerate(action_list)}
+
+        self.action_space = spaces.Discrete(self.action_dim)
+
+    def action(self, action):
+        assert np.isscalar(action) or isinstance(action, int), "Action is not an integer"
+        assert action >= 0 and action < self.action_dim
+        return np.array(self.index_to_actions[action])
+
+
+class FinalLayerObservationWrapper(gym.ObservationWrapper):
+    def __init__(self, env, latent_dim: int, map: str):
+        super(FinalLayerObservationWrapper, self).__init__(env)
+        self.latent_dim = latent_dim
+        self.vae = AutoEncoder(input_shape = self.observation_space.shape, latent_dim=self.latent_dim)
+        self.vae.load_state_dict(torch.load(
+            osp.join(PROJECT_PATH, "vae", "checkpoints", map, f"latent_{self.latent_dim}", "best_model.pt"),
+            map_location=torch.device(device)))
+
+        self.encoder = self.vae.encoder
+        for params in self.encoder.parameters():
+            params.requires_grad = False
+        self.transforms = transforms.Compose([
+            transforms.ToTensor()
+        ])
+
+        self.cur_angle_dim = 1 # HARD CODE
+        self.speed_dim = 1 # HARD CODE
+        self.cur_pos_dim = 3 # HARD CODE
+
+        self.obs_dim = self.latent_dim + self.cur_pos_dim + self.speed_dim + self.cur_angle_dim
+        self.observation_space.shape = (self.obs_dim,)
+        self.observation_space = spaces.Box(-np.inf, np.inf, (self.obs_dim,), dtype=np.float32)
+
+    def observation(self, observation):
+        #1. Check dimension
+        assert observation.ndim == 3, "Dimension of image must be 3"
+        observation=observation.astype(np.float32)
+        # 1. Extract first latent to go into Encoder
+        encoded_observation = self.encoder(self.transforms(observation)[None])
+        encoded_observation = encoded_observation.detach().numpy()[0]
+
+        output_observation = np.concatenate([encoded_observation,
+                                             self.env.unwrapped.cur_pos,
+                                             np.array([self.env.unwrapped.speed]),
+                                             np.array([self.env.unwrapped.cur_angle])])
+        return output_observation
