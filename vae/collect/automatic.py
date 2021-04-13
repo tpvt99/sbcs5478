@@ -20,6 +20,11 @@ from typing import List
 from gym_duckietown.envs import DuckietownEnv
 from sb_code.wrapper import ResizeWrapper, NormalizeWrapper
 
+from sys import platform
+# Below 2 lines is for Windows 10 Environment. Comment if running on other OS
+if platform == 'win32':
+    import os
+    os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
 REWARD_INVALID_POSE = -1000
 
@@ -33,7 +38,7 @@ class DataGenerator:
         self.episode = 1
         self.max_episodes = max_episodes
         self.downscale = downscale
-
+        self.total_rewards = 0
         #! Enter main event loop
         print("Starting data generation")
 
@@ -131,8 +136,9 @@ class DataGenerator:
         #! GO! and get next
         # * Observation is 640x480 pixels
         obs, reward, done, info = env.step(action)
-        #env.render()
-
+        env.render()
+        self.total_rewards += reward
+        print(f'Reward {reward} with total: {self.total_rewards}')
         if reward == REWARD_INVALID_POSE:
             print("Out of bound")
         else:
@@ -162,6 +168,7 @@ class DataGenerator:
             print(f"episode {self.episode}/{self.max_episodes}")
             self.episode += 1
             env.reset()
+            self.total_rewards = 0
             if self.logger.episode_count >= args.nb_episodes:
                 print("Training completed !")
                 sys.exit()
@@ -173,7 +180,7 @@ if __name__ == "__main__":
     #! Parser sector:
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-name", default=None)
-    parser.add_argument("--map-name", default="map3")
+    parser.add_argument("--map-name", default="map4")
     parser.add_argument(
         "--draw-curve", default=False, help="draw the lane following curve"
     )
@@ -189,7 +196,7 @@ if __name__ == "__main__":
         "--raw-log", default=False, help="enables recording high resolution raw log"
     )
     parser.add_argument(
-        "--steps", default=2000, help="number of steps to record in one batch", type=int
+        "--steps", default=1500, help="number of steps to record in one batch", type=int
     )
     parser.add_argument("--nb-episodes", default=15, type=int)
     parser.add_argument("--logfile", type=str, default=None)

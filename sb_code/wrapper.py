@@ -9,6 +9,7 @@ from global_configuration import PROJECT_PATH
 import torch
 import numpy as np
 from torchvision import transforms
+from itertools import product
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
@@ -48,41 +49,63 @@ class RewardWrapper(gym.RewardWrapper):
 
     def reward(self, reward):
         if reward == REWARD_INVALID_POSE:
-            return -40.0
+            return -50.0
 
-        pos = self.env.cur_pos
-        angle = self.env.cur_angle
-        speed = self.env.speed
-        col_penalty = self.env._proximity_penalty2(pos, angle)
-
-        # Get the position relative to the right lane tangent
-        try:
-            lp = self.env.get_lane_pos2(pos, angle)
-        except NotInLane:
-            reward = 400 * col_penalty
-        else:
-
-            # Compute the reward
-            reward = (
-                    +10.0 * speed * lp.dot_dir +
-                    -100 * np.abs(lp.dist) +
-                    +400 * col_penalty
-            )
-
-        dist_to_stop = 1000.0
-        # print("number of objects = ", len(self.objects))
-        for obj in self.objects:
-            if obj.kind == "sign_stop":
-                dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
-
-        if self.speed > 0.15 and dist_to_stop < 0.3:
-            reward = -100.0
+        # pos = self.env.cur_pos
+        # angle = self.env.cur_angle
+        # speed = self.env.speed
+        # col_penalty = self.env._proximity_penalty2(pos, angle)
+        #
+        # # Get the position relative to the right lane tangent
+        # try:
+        #     lp = self.env.get_lane_pos2(pos, angle)
+        # except NotInLane:
+        #     reward = 40 * col_penalty
+        # else:
+        #
+        #     # Compute the reward
+        #     reward = (
+        #             +1.0 * speed * lp.dot_dir +
+        #             -10 * np.abs(lp.dist) +
+        #             +40 * col_penalty
+        #     )
+        #
+        # dist_to_stop = 1000.0
+        # # print("number of objects = ", len(self.objects))
+        # for obj in self.objects:
+        #     if obj.kind == "sign_stop":
+        #         dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
+        #
+        # if self.speed > 0.15 and dist_to_stop < 0.3:
+        #     reward = -100.0
 
         if reward > 0:
             reward += 10
         else:
-            reward += 4
+            reward += 2
         return reward
+
+class DiscreteWrapper(gym.ActionWrapper):
+    """
+    Duckietown environment with discrete actions (left, right, forward)
+    instead of continuous control
+    """
+
+    def __init__(self, env):
+        gym.ActionWrapper.__init__(self, env)
+        velocity_list = [0.1, 0.25, 0.35, 0.4, 0.5, 0.7, 0.9, 1.0]
+        steering_list = [-np.pi, -np.pi/8, -np.pi/2, -np.pi/4, 0, np.pi/4, np.pi/2, np.pi/8, np.pi]
+        action_list = list(product(velocity_list, steering_list))
+        self.action_dim = len(action_list)
+        self.index_to_actions = {key:val for key,val in enumerate(action_list)}
+
+        self.action_space = spaces.Discrete(self.action_dim)
+
+    def action(self, action):
+        assert np.isscalar(action) or isinstance(action, int), "Action is not an integer"
+        assert action >= 0 and action < self.action_dim
+        return np.array(self.index_to_actions[action])
+
 
 class FinalLayerObservationWrapper(gym.ObservationWrapper):
     def __init__(self, env, latent_dim: int, map: str):
