@@ -1,0 +1,8 @@
+.vscode/
+results/
+*.npy
+*.pyc
+logs/
+data/
+checkpoints/
+*~
