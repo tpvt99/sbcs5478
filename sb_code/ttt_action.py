@@ -17,7 +17,7 @@ import json
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
-results_dir = osp.join(PROJECT_PATH, "results", "ppo", "2021-04-13_ppo", "2021-04-13_15-49-19_ppo")
+results_dir = osp.join(PROJECT_PATH, "results", "ppo", "2021-04-15_ppo", "2021-04-15_14-29-18_ppo")
 
 with open(osp.join(results_dir, "config.json"), 'r') as f:
     custom_params = json.load(f)
@@ -27,10 +27,10 @@ env = DuckietownEnv(
             domain_rand=False,
             draw_bbox=False,
             max_steps=1500,
-            seed=1
+            seed=None
             )
 
-env = RewardWrapper(env)
+#env = RewardWrapper(env)
 env = ResizeWrapper(env, shape=(64, 80, 3))
 
 if custom_params['algo'] == 'dqn':
@@ -59,8 +59,8 @@ elif custom_params['algo'] == 'a2c':
 elif custom_params['algo'] == 'dqn':
     model = DQN.load(osp.join(results_dir, "best_model", "best_model.zip"))
 elif custom_params['algo'] == 'ppo':
-    model = PPO.load(osp.join(results_dir, "best_model", "best_model.zip"))
-
+    #model = PPO.load(osp.join(results_dir, "best_model", "best_model.zip"))
+    model = PPO.load(osp.join(results_dir, "phong_best", "phong_best.zip"))
 else:
     raise ValueError("Error model")
 

@@ -10,6 +10,8 @@ import torch
 import numpy as np
 from torchvision import transforms
 from itertools import product
+from PIL import Image
+import matplotlib.pyplot as plt
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
@@ -24,9 +26,16 @@ class ResizeWrapper(gym.ObservationWrapper):
             shape,
             dtype=self.observation_space.dtype)
         self.shape = shape
+        self.count = 0
 
     def observation(self, observation):
         resized_img = cv2.resize(observation, dsize=(self.shape[1], self.shape[0]), interpolation=cv2.INTER_AREA)
+        # if self.env.unwrapped.step_count in [0, 1]:
+        #     print(f'Count {self.env.unwrapped.step_count}, Position {self.env.unwrapped.cur_pos} '
+        #           f'Angle {self.env.unwrapped.cur_angle} and speed {self.env.unwrapped.speed}')
+        #     #plt.imshow()
+        #     plt.imsave(f'f{self.count}_step{self.env.unwrapped.step_count}.jpeg', resized_img)
+        #     self.count+=1
         return resized_img
 
 class NormalizeWrapper(gym.ObservationWrapper):
@@ -49,40 +58,41 @@ class RewardWrapper(gym.RewardWrapper):
 
     def reward(self, reward):
         if reward == REWARD_INVALID_POSE:
-            return -50.0
+            return -30.0
 
-        # pos = self.env.cur_pos
-        # angle = self.env.cur_angle
-        # speed = self.env.speed
-        # col_penalty = self.env._proximity_penalty2(pos, angle)
-        #
-        # # Get the position relative to the right lane tangent
-        # try:
-        #     lp = self.env.get_lane_pos2(pos, angle)
-        # except NotInLane:
-        #     reward = 40 * col_penalty
-        # else:
-        #
-        #     # Compute the reward
-        #     reward = (
-        #             +1.0 * speed * lp.dot_dir +
-        #             -10 * np.abs(lp.dist) +
-        #             +40 * col_penalty
-        #     )
-        #
-        # dist_to_stop = 1000.0
-        # # print("number of objects = ", len(self.objects))
-        # for obj in self.objects:
-        #     if obj.kind == "sign_stop":
-        #         dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
-        #
-        # if self.speed > 0.15 and dist_to_stop < 0.3:
-        #     reward = -100.0
+        pos = self.env.cur_pos
+        angle = self.env.cur_angle
+        speed = self.env.speed
+        col_penalty = self.env._proximity_penalty2(pos, angle)
+
+        # Get the position relative to the right lane tangent
+        try:
+            lp = self.env.get_lane_pos2(pos, angle)
+        except NotInLane:
+            reward = 40 * col_penalty
+        else:
+
+            # Compute the reward
+            reward = (
+                    +1.0 * speed * lp.dot_dir +
+                    -10 * np.abs(lp.dist) +
+                    +40 * col_penalty
+            )
+
+        dist_to_stop = 1000.0
+        # print("number of objects = ", len(self.objects))
+        for obj in self.objects:
+            if obj.kind == "sign_stop":
+                dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
+
+        if self.speed > 0.15 and dist_to_stop < 0.3:
+            reward = -100.0
 
         if reward > 0:
-            reward += 10
+            reward += 5
         else:
             reward += 2
+
         return reward
 
 class DiscreteWrapper(gym.ActionWrapper):
