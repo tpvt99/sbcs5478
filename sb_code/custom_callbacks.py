@@ -33,13 +33,14 @@ class CustomBestModelCallback(BaseCallback):
     :param verbose:
     """
 
-    def __init__(self, eval_env, eval_freq: int, logger: Logger, name_prefix: str = "phong_best"):
+    def __init__(self, eval_env, eval_freq: int, logger: Logger, algo:str, name_prefix: str = "phong_best"):
         super(CustomBestModelCallback, self).__init__()
         self.eval_freq = eval_freq
         self.name_prefix = name_prefix
         self.eval_env = eval_env
         self.save_path = osp.join(logger.output_dir, name_prefix)
         self.custom_logger = logger
+        self.algo_type = algo
 
         # For evaluation
         self.best_reward = None
@@ -55,10 +56,10 @@ class CustomBestModelCallback(BaseCallback):
             episode_rewards = self.eval_env.unwrapped.envs[0].get_episode_rewards()
 
             if len(episode_rewards) > 0:
-                mean_reward = np.mean(episode_rewards[-500:])
-                std_reward = np.std(episode_rewards[-500:])
-                mean_length = np.mean(episode_lengths[-500:])
-                std_length = np.std(episode_lengths[-500:])
+                mean_reward = np.mean(episode_rewards[-1000:])
+                std_reward = np.std(episode_rewards[-1000:])
+                mean_length = np.mean(episode_lengths[-1000:])
+                std_length = np.std(episode_lengths[-1000:])
 
                 if self.best_reward == None and len(episode_lengths) > 50:
                     self.best_reward = mean_reward
@@ -84,6 +85,7 @@ class CustomBestModelCallback(BaseCallback):
                 self.custom_logger.log_tabular('std_length', std_length)
                 self.custom_logger.log_tabular('best_reward', self.best_reward if self.best_reward != None else '')
                 self.custom_logger.dump_tabular()
-
+            if self.algo_type == 'dqn':
+                print('Exploration rate: ', self.model.exploration_rate)
             print('-------------------------')
         return True

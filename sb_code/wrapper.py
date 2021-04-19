@@ -57,8 +57,8 @@ class RewardWrapper(gym.RewardWrapper):
         super(RewardWrapper, self).__init__(env)
 
     def reward(self, reward):
-        if reward == REWARD_INVALID_POSE:
-            return -30.0
+        #if reward == REWARD_INVALID_POSE:
+        #    return -100.0
 
         pos = self.env.cur_pos
         angle = self.env.cur_angle
@@ -79,19 +79,31 @@ class RewardWrapper(gym.RewardWrapper):
                     +40 * col_penalty
             )
 
-        dist_to_stop = 1000.0
-        # print("number of objects = ", len(self.objects))
-        for obj in self.objects:
-            if obj.kind == "sign_stop":
-                dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
+        # dist_to_stop = 1000.0
+        # for obj in self.objects:
+        #     if obj.kind == "sign_stop":
+        #         dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
+        #
+        # if dist_to_stop > 0.3 and dist_to_stop <= 1:
+        #     reward -= 5.0 * self.speed
+        #
+        # if self.speed > 0.15 and dist_to_stop < 0.3:
+        #     reward -= 10.0
 
-        if self.speed > 0.15 and dist_to_stop < 0.3:
-            reward = -100.0
+        # if reward > 0:
+        #     reward += 3
+        # else:
+        #     reward += 1
 
-        if reward > 0:
-            reward += 5
-        else:
-            reward += 2
+        return reward
+
+class Map1EvalRewardWrapper(gym.RewardWrapper):
+    def __init__(self, env=None):
+        super(Map1EvalRewardWrapper, self).__init__(env)
+
+    def reward(self, reward):
+        if reward == REWARD_INVALID_POSE:
+            return 0.0
 
         return reward
 
@@ -103,18 +115,39 @@ class DiscreteWrapper(gym.ActionWrapper):
 
     def __init__(self, env):
         gym.ActionWrapper.__init__(self, env)
-        velocity_list = [0.1, 0.25, 0.35, 0.4, 0.5, 0.7, 0.9, 1.0]
-        steering_list = [-np.pi, -np.pi/8, -np.pi/2, -np.pi/4, 0, np.pi/4, np.pi/2, np.pi/8, np.pi]
-        action_list = list(product(velocity_list, steering_list))
-        self.action_dim = len(action_list)
-        self.index_to_actions = {key:val for key,val in enumerate(action_list)}
+        discrete_v = [0.1, 0.35, 1.0]
+
+        denominators = [1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2, 4, 8, 12, 16, 20]
+        discrete_w = [-np.pi / x for x in denominators] + [-1.0, 0.0, 1.0] + [np.pi / x for x in denominators]
+        for x in np.arange(0.01, 0.11, 0.01):
+            discrete_w.append(np.round(x, 2))
+            discrete_w.append(-np.round(x, 2))
+
+        for x in np.arange(0.001, 0.01, 0.002):
+            discrete_w.append(np.round(x, 3))
+            discrete_w.append(-np.round(x, 3))
+
+        for w in range(len(discrete_w)):
+            if discrete_w[w] == 0:
+                discrete_w[w] = 0
+
+        self.action_list = list(product(discrete_v, discrete_w))
+        self.action_list.append((0.0, 1.0))
+        self.action_list.append((0.0, -np.pi / 2))
+        self.action_list.append((0.0, np.pi / 2))
+
+        self.action_dim = len(self.action_list)
+
+        print("Action space:", self.action_dim)
+        print(self.action_list)
+
 
         self.action_space = spaces.Discrete(self.action_dim)
 
     def action(self, action):
         assert np.isscalar(action) or isinstance(action, int), "Action is not an integer"
         assert action >= 0 and action < self.action_dim
-        return np.array(self.index_to_actions[action])
+        return np.array(self.action_list[action])
 
 
 class FinalLayerObservationWrapper(gym.ObservationWrapper):
@@ -154,3 +187,13 @@ class FinalLayerObservationWrapper(gym.ObservationWrapper):
                                              np.array([self.env.unwrapped.speed]),
                                              np.array([self.env.unwrapped.cur_angle])])
         return output_observation
+
+class PositiveVelocityActionWrapper(gym.ActionWrapper):
+    def __init__(self, env):
+        super(PositiveVelocityActionWrapper, self).__init__(env)
+        self.action_space = spaces.Box(low=np.array([-1, -1.]), high=np.array([1., 1.]), shape=(2,))
+
+    def action(self, action):
+        assert action.ndim == 1
+        #action[0] = np.clip(action[0], 0.0, 1.0)
+        return action
