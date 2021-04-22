@@ -1,5 +1,6 @@
 from gym_duckietown.envs.duckietown_env import DuckietownEnv
-from sb_code.wrapper import NormalizeWrapper, ResizeWrapper, RewardWrapper, FinalLayerObservationWrapper, DiscreteWrapper, PositiveVelocityActionWrapper
+from sb_code.wrapper import NormalizeWrapper, ResizeWrapper, RewardWrapper, FinalLayerObservationWrapper, \
+    DiscreteWrapper, PositiveVelocityActionWrapper, InfoWrapperEval
 from aido_code.reward_wrappers import DtRewardPosAngle, DtRewardVelocity
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3 import SAC, A2C, DQN, PPO
@@ -14,13 +15,11 @@ import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 
-#results_dir = osp.join(PROJECT_PATH, "results", "dqn", "2021-04-19_dqn", "2021-04-19_14-52-12_dqn") # original map1
-results_dir = osp.join(PROJECT_PATH, "results", "dqn", "2021-04-19_dqn", "2021-04-19_18-04-39_dqn") # finetune map1
-#results_dir = osp.join(PROJECT_PATH, "results", "dqn", "2021-04-19_dqn", "2021-04-19_20-01-28_dqn") # finetune map1 with original reward
-#results_dir = osp.join(PROJECT_PATH, "results", "ppo", "2021-04-19_ppo", "2021-04-19_16-59-46_ppo")
 
+#results_dir = osp.join(PROJECT_PATH, "results", "dqn", "2021-04-20_dqn", "2021-04-20_23-38-53_dqn") # original map1 train again
+results_dir = osp.join(PROJECT_PATH, "results", "dqn", "2021-04-22_dqn", "2021-04-22_17-41-00_dqn") # original map2 train again
 
-
+SEED = 2
 
 with open(osp.join(results_dir, "config.json"), 'r') as f:
     custom_params = json.load(f)
@@ -30,13 +29,13 @@ env = DuckietownEnv(
             domain_rand=False,
             draw_bbox=False,
             max_steps=1500,
-            #seed=custom_params['seed']
-            seed=2
+            seed=SEED
             )
 
 #env = DtRewardPosAngle(env)
 #env = DtRewardVelocity (env)
 #env = RewardWrapper(env)
+env = InfoWrapperEval(env)
 env = ResizeWrapper(env, shape=(60, 80, 3))
 
 
@@ -45,7 +44,7 @@ if custom_params['discrete']:
 
 if custom_params['USING_VAE']:
     env = NormalizeWrapper(env) # No need to use normalization if image
-    env = FinalLayerObservationWrapper(env, latent_dim=1028, map=custom_params['map'])
+    env = FinalLayerObservationWrapper(env, latent_dim=custom_params['VAE_LATENT_DIM'], map=custom_params['map'])
 
 
 # Step 3.b. To make Vectorized Environment to be able to use Normalize or FramStack (Optional)
@@ -65,8 +64,8 @@ elif custom_params['algo'] == 'a2c':
     model = A2C.load(osp.join(results_dir, "best_model", "best_model.zip"))
 elif custom_params['algo'] == 'dqn':
     #model = DQN.load(osp.join(results_dir, "best_model", "best_model.zip"), env=env)
-    #model = DQN.load(osp.join(results_dir, "phong_best", "phong_best.zip"), env=env)
-    model = DQN.load(osp.join(results_dir, "rl_model_150000_steps.zip"), env=env)
+    #model = DQN.load(osp.join(results_dir, "phong_best", "phong_best_221000.zip"), env=env)
+    model = DQN.load(osp.join(results_dir, "rl_model_510000_steps.zip"), env=env)
 elif custom_params['algo'] == 'ppo':
     #model = PPO.load(osp.join(results_dir, "best_model", "best_model"), env=env, seed=custom_params['seed'])
     model = PPO.load(osp.join(results_dir, "phong_best", "phong_best"), env=env)
@@ -79,11 +78,11 @@ env.training = False
 # reward normalization is not needed at test time
 env.norm_reward = False
 
-seed_lists = [2, 3, 5, 9, 12]
 
-for episode in range(len(seed_lists)):
+txt_file = open(f'{custom_params["map"]}_seed{SEED}.txt', 'w')
 
-    #env.seed(9)
+for episode in range(1):
+
     obs = env.reset()
 
     steps = 0
@@ -94,14 +93,18 @@ for episode in range(len(seed_lists)):
         env.render()
         action, state = model.predict(obs, state=state, deterministic=True)
         obs, reward, done, info = env.step(action)
-        print(f'Step {steps} Action {action} with Reward {reward} with info {info}')
-
-        if done:
-            break
+        discrete_action_tobe_wrote = env.unwrapped.envs[0].env.action_list[int(action)]
+        print(f'Step {steps} Action {discrete_action_tobe_wrote} with Reward {reward}')
 
         steps += 1
         rewards += reward
 
-    print(f'Seed {seed_lists[episode]} steps {steps} and rewards {rewards}')
+        txt_file.write(f"{discrete_action_tobe_wrote[0]},{discrete_action_tobe_wrote[1]}\n")
+        if done:
+            break
+        print('-------')
+
+    print(f'Seed {SEED} steps {steps} and rewards {rewards}')
     print('-------')
     break
+txt_file.close()

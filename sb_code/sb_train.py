@@ -17,6 +17,7 @@ from sb_code.Logger import Logger
 from sys import platform
 import torch
 import random
+import shutil
 
 # Below 2 lines is for Windows 10 Environment. Comment if running on other OS
 if platform == 'win32':
@@ -35,20 +36,20 @@ PROJECT_PATH = osp.abspath(osp.dirname(osp.dirname(__file__)))
 # Step 1. Initialize some parameters
 custom_params = {
     # ENVIORNMENT Set up
-    'map': 'map1',
+    'map': 'map2',
     'ep_len': 1500,
     'seed': 2,
     # WRAPPERS
     'USING_VAE' : False, # whether to use VAE
-    'VAE_LATENT_DIM': 1028,
-    'FRAME_STACK' : 2,
+    'VAE_LATENT_DIM': 512,
+    'FRAME_STACK' : 3,
     'USING_NORMALIZATION' : True,
     'discrete': True,
     # TRAINING
     'eval_freq': 1000, # All are steps running
     'save_freq': 30000,
     'eval_episodes': 5,
-    'restore': True,
+    'restore': False,
     'load_path': osp.join(PROJECT_PATH, "results", "dqn", "2021-04-19_dqn", "2021-04-19_14-52-12_dqn", "phong_best", "phong_best"),
     # ALGORITHMS PARAMETERS
     'algo' : 'dqn',
@@ -62,7 +63,11 @@ custom_params = {
     'dqn_parameters': {
         'optimize_memory_usage': True,
         'buffer_size': int(2e5),
-        'exploration_fraction': 0.05
+        'exploration_fraction': 0.1,
+        'gamma': .98,
+        'train_freq': (1, 'episode'),
+        'gradient_steps': 10,
+        'target_update_interval': 50000
     },
     'a2c_parameters': {
         'use_sde': True,
@@ -126,7 +131,6 @@ def setup_env():
 # Step 3. Check the custom environment. Must do it before any wrappers
 #check_env(env)
 
-
 # Step 3.a Our Wrapper
 train_env, eval_env = setup_env()
 
@@ -152,13 +156,14 @@ if custom_params['USING_NORMALIZATION']:
 
 # Step 4. Make Logger corrsponding to the name of algorithm
 logger = Logger(custom_params['algo'])
+shutil.copy(osp.join(PROJECT_PATH, "sb_code", "wrapper.py"), logger.output_dir)
 
 # Step 5. Creating callbacks
 
 checkpoint_callback = CheckpointCallback(save_freq=custom_params['save_freq'], save_path=logger.output_dir,
                                          name_prefix='rl_model')
 
-custom_bestmodel_callback = CustomBestModelCallback(eval_env=eval_env, eval_freq=custom_params['eval_freq'], logger=logger, algo=custom_params['algo'])
+custom_bestmodel_callback = CustomBestModelCallback(eval_env=eval_env, eval_freq=custom_params['eval_freq'], logger=logger, custom_params=custom_params)
 
 savestats_callback = SaveNormalization(save_path=osp.join(logger.output_dir, "vec_normalization.pkl")) # If using normalize, must create this callback
 
@@ -185,7 +190,7 @@ else:
 logger.save_config(custom_params)
 
 if custom_params['algo'] == 'dqn':
-    model.learn(total_timesteps=5000000, log_interval=1000, callback=callback) # Log_interval = number of episodes
+    model.learn(total_timesteps=10000000, log_interval=1000, callback=callback) # Log_interval = number of episodes
 else:
     model.learn(total_timesteps=10000000, log_interval=100, callback=callback) # Log_interval = number of episodes
 

@@ -1,12 +1,16 @@
 import argparse
 import numpy as np
 from gym_duckietown.envs import DuckietownEnv
+from sb_code.wrapper import InfoWrapperEval
+
+import os
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 # declare the arguments
 parser = argparse.ArgumentParser()
 
 # Do not change this
-parser.add_argument('--max_steps', type=int, default=2000, help='max_steps')
+parser.add_argument('--max_steps', type=int, default=1500, help='max_steps')
 
 # You should set them to different map name and seed accordingly
 parser.add_argument('--map-name', default='map5')
@@ -21,13 +25,15 @@ env = DuckietownEnv(
     seed = args.seed
 )
 
+#env = InfoWrapperEval(env)
+
 obs = env.reset()
 env.render()
 
 total_reward = 0
 
 # please remove this line for your own policy
-actions = np.loadtxt('./map5_seed11.txt', delimiter=',')
+actions = np.loadtxt(f'./{args.map_name}_seed{args.seed}.txt', delimiter=',')
 
 for (speed, steering) in actions:
 
@@ -41,4 +47,4 @@ for (speed, steering) in actions:
 print("Total Reward", total_reward)
 
 # dump the controls using numpy
-np.savetxt('./map5_seed11.txt', actions, delimiter=',')
+#np.savetxt('./map5_seed11.txt', actions, delimiter=',')

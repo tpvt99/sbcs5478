@@ -12,6 +12,7 @@ from torchvision import transforms
 from itertools import product
 from PIL import Image
 import matplotlib.pyplot as plt
+import math
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} device'.format(device))
@@ -65,6 +66,13 @@ class RewardWrapper(gym.RewardWrapper):
         speed = self.env.speed
         col_penalty = self.env._proximity_penalty2(pos, angle)
 
+        dist_to_stop = 1000.0
+        dist_thresh = 0.30
+
+        for obj in self.objects:
+            if obj.kind == "sign_stop":
+                dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
+
         # Get the position relative to the right lane tangent
         try:
             lp = self.env.get_lane_pos2(pos, angle)
@@ -73,27 +81,27 @@ class RewardWrapper(gym.RewardWrapper):
         else:
 
             # Compute the reward
-            reward = (
-                    +1.0 * speed * lp.dot_dir +
-                    -10 * np.abs(lp.dist) +
-                    +40 * col_penalty
-            )
+            if dist_to_stop < dist_thresh:
+                reward = (
+                    # + 1.0  * lp.dot_dir
+                        - 10.0 * np.abs(lp.dist)
+                        + 40.0 * col_penalty
+                        + 1.0 * ((2.2 / (1 + self.speed)) - 1) * lp.dot_dir
+                )
+            else:
+                # Compute the reward
+                reward = (
+                        + 1.0 * self.speed * lp.dot_dir
+                        - 10.0 * np.abs(lp.dist)
+                        + 40.0 * col_penalty
+                )
 
-        # dist_to_stop = 1000.0
-        # for obj in self.objects:
-        #     if obj.kind == "sign_stop":
-        #         dist_to_stop = min(dist_to_stop, ((pos[0] - obj.pos[0]) ** 2 + (pos[2] - obj.pos[2]) ** 2) ** 0.5)
         #
-        # if dist_to_stop > 0.3 and dist_to_stop <= 1:
-        #     reward -= 5.0 * self.speed
-        #
-        # if self.speed > 0.15 and dist_to_stop < 0.3:
-        #     reward -= 10.0
+        if self.speed > 0.15 and dist_to_stop < 0.3:
+            reward -= 1.5
 
-        # if reward > 0:
-        #     reward += 3
-        # else:
-        #     reward += 1
+        if math.fabs(self.speed - 0) <= 1e-10:
+            reward -= 0.8
 
         return reward
 
@@ -106,6 +114,29 @@ class Map1EvalRewardWrapper(gym.RewardWrapper):
             return 0.0
 
         return reward
+
+
+class InfoWrapperEval(gym.RewardWrapper):
+    def __init__(self, env=None):
+        super(InfoWrapperEval, self).__init__(env)
+
+    def get_dist_to_stop(self):
+        dist_to_stop = 1000.0
+
+        for obj in self.env.unwrapped.objects:
+            if obj.kind == "sign_stop":
+                dist_to_stop = min(dist_to_stop, ((self.env.unwrapped.cur_pos[0] - obj.pos[0]) ** 2 + (
+                            self.env.unwrapped.cur_pos[2] - obj.pos[2]) ** 2) ** 0.5)
+
+        return dist_to_stop
+
+    def reward(self, reward):
+        print(f'Speed: {self.env.unwrapped.speed} '
+              f'DistanceToStop: {self.get_dist_to_stop()}')
+              #f'Collistion {self.env.unwrapped._proximity_penalty2(self.env.unwrapped.cur_pos, self.env.unwrapped.cur_angle)}'
+              #f'LP: {self.env.unwrapped.get_lane_pos2(self.env.unwrapped.cur_pos, self.env.unwrapped.cur_angle)}')
+        return reward
+
 
 class DiscreteWrapper(gym.ActionWrapper):
     """
@@ -138,8 +169,8 @@ class DiscreteWrapper(gym.ActionWrapper):
 
         self.action_dim = len(self.action_list)
 
-        print("Action space:", self.action_dim)
-        print(self.action_list)
+        #print("Action space:", self.action_dim)
+        #print(self.action_list)
 
 
         self.action_space = spaces.Discrete(self.action_dim)
@@ -169,10 +200,21 @@ class FinalLayerObservationWrapper(gym.ObservationWrapper):
         self.cur_angle_dim = 1 # HARD CODE
         self.speed_dim = 1 # HARD CODE
         self.cur_pos_dim = 3 # HARD CODE
+        self.dist_to_stop_dim = 1
 
-        self.obs_dim = self.latent_dim + self.cur_pos_dim + self.speed_dim + self.cur_angle_dim
+        self.obs_dim = self.latent_dim + self.cur_pos_dim + self.speed_dim + self.cur_angle_dim + self.dist_to_stop_dim
         self.observation_space.shape = (self.obs_dim,)
         self.observation_space = spaces.Box(-np.inf, np.inf, (self.obs_dim,), dtype=np.float32)
+
+    def get_dist_to_stop(self):
+        dist_to_stop = 1000.0
+
+        for obj in self.env.unwrapped.objects:
+            if obj.kind == "sign_stop":
+                dist_to_stop = min(dist_to_stop, ((self.env.unwrapped.cur_pos[0] - obj.pos[0]) ** 2 + (
+                            self.env.unwrapped.cur_pos[2] - obj.pos[2]) ** 2) ** 0.5)
+
+        return dist_to_stop
 
     def observation(self, observation):
         #1. Check dimension
@@ -183,6 +225,7 @@ class FinalLayerObservationWrapper(gym.ObservationWrapper):
         encoded_observation = encoded_observation.detach().numpy()[0]
 
         output_observation = np.concatenate([encoded_observation,
+                                             np.array([self.get_dist_to_stop()]),
                                              self.env.unwrapped.cur_pos,
                                              np.array([self.env.unwrapped.speed]),
                                              np.array([self.env.unwrapped.cur_angle])])
