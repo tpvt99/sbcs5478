@@ -7,7 +7,7 @@ import math
 from stable_baselines3.common.vec_env import sync_envs_normalization
 from gym_duckietown.envs.duckietown_env import DuckietownEnv
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecFrameStack, VecTransposeImage, DummyVecEnv, VecEnv
+from stable_baselines3.common.vec_env import VecFrameStack, VecTransposeImage, DummyVecEnv, VecEnv, VecNormalize
 from stable_baselines3.common.evaluation import evaluate_policy
 
 from sb_code.wrapper import NormalizeWrapper, ResizeWrapper, FinalLayerObservationWrapper, DiscreteWrapper
@@ -98,6 +98,9 @@ class CustomBestModelCallback(BaseCallback):
         if not custom_params['USING_VAE']:
             env = VecTransposeImage(env)  # Uncomment if using 3d obs
 
+        if custom_params['USING_NORMALIZATION']:
+            env = VecNormalize(env, norm_obs=True, norm_reward=False)  # If using normalize, must save
+
         return env
 
     def _on_step(self) -> bool:
@@ -126,7 +129,7 @@ class CustomBestModelCallback(BaseCallback):
                     n_eval_episodes=1,
                     render=False,
                     deterministic=True,
-                    return_episode_rewards=False,
+                    return_episode_rewards=True,
                     warn=False
                 )
                 self.reward_list.extend(episode_rewards)
@@ -144,16 +147,18 @@ class CustomBestModelCallback(BaseCallback):
                 self.best_reward = mean_reward
                 self.model.save(path)
                 print(f"Saving model checkpoint to {path}")
+                self.model.save(osp.join(self.save_path, f"{self.name_prefix}_{str(int(mean_reward)).replace('.', '_')}"))
 
             if np.mean(solo_reward_list) > self.best_reward_solo:
                 self.best_reward_solo = np.mean(solo_reward_list)
-                path = osp.join(self.save_path, f"{self.name_prefix}_{self.n_calls}")
+                path = osp.join(self.save_path, f"{self.name_prefix}_solo_{str(int(mean_reward)).replace('.', '_')}")
                 self.model.save(path)
                 print(f"Saving solo model checkpoint to {path}")
 
-            print(f'Custom Eval at timesteps {self.n_calls} with meanReward: {mean_reward:.3f},  stdReward: {std_reward:.3f} '
-                  f'meanLength {mean_length:.3f}  stdLength: {std_length:.3f} bestReward: {self.best_reward:.3f}'
-                  f' rewardSolo {np.mean(solo_reward_list):.3f} lengthSolo {np.mean(solo_length_list):3.f} bestRewardSolo: {self.best_reward_solo}')
+            print(f'Custom Eval timesteps {self.n_calls} meanReward: {mean_reward:.2f} stdReward: {std_reward:.2f} '
+                  f'meanLength {mean_length:.2f} stdLength: {std_length:.2f} bestReward: {self.best_reward:.2f}'
+                  f'rewardSolo {np.mean(solo_reward_list):.2f} lengthSolo {np.mean(solo_length_list):.2f} '
+                  f'bestRewardSolo: {self.best_reward_solo:.2f}')
 
             self.custom_logger.log_tabular('n_calls', self.n_calls)
             self.custom_logger.log_tabular('mean_reward', mean_reward)
@@ -165,7 +170,8 @@ class CustomBestModelCallback(BaseCallback):
             self.custom_logger.log_tabular('best_reward_solo', self.best_reward_solo)
 
             self.custom_logger.dump_tabular()
-        if self.custom_params['algo'] == 'dqn':
-            print('Exploration rate: ', self.model.exploration_rate)
-        print('-------------------------')
+            if self.custom_params['algo'] == 'dqn':
+                print('Exploration rate: ', self.model.exploration_rate)
+
+            print('-------------------------')
         return True

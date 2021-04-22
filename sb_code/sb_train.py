@@ -40,13 +40,13 @@ custom_params = {
     'ep_len': 1500,
     'seed': 2,
     # WRAPPERS
-    'USING_VAE' : False, # whether to use VAE
+    'USING_VAE' : True, # whether to use VAE
     'VAE_LATENT_DIM': 512,
-    'FRAME_STACK' : 3,
+    'FRAME_STACK' : 20,
     'USING_NORMALIZATION' : True,
     'discrete': True,
     # TRAINING
-    'eval_freq': 1000, # All are steps running
+    'eval_freq': 2000, # All are steps running
     'save_freq': 30000,
     'eval_episodes': 5,
     'restore': False,
@@ -63,7 +63,7 @@ custom_params = {
     'dqn_parameters': {
         'optimize_memory_usage': True,
         'buffer_size': int(2e5),
-        'exploration_fraction': 0.1,
+        'exploration_fraction': 0.25,
         'gamma': .98,
         'train_freq': (1, 'episode'),
         'gradient_steps': 10,
