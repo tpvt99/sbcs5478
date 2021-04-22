@@ -156,7 +156,7 @@ class CustomBestModelCallback(BaseCallback):
                 print(f"Saving solo model checkpoint to {path}")
 
             print(f'Custom Eval timesteps {self.n_calls} meanReward: {mean_reward:.2f} stdReward: {std_reward:.2f} '
-                  f'meanLength {mean_length:.2f} stdLength: {std_length:.2f} bestReward: {self.best_reward:.2f}'
+                  f'meanLength {mean_length:.2f} stdLength: {std_length:.2f} bestReward: {self.best_reward:.2f} '
                   f'rewardSolo {np.mean(solo_reward_list):.2f} lengthSolo {np.mean(solo_length_list):.2f} '
                   f'bestRewardSolo: {self.best_reward_solo:.2f}')
 
