@@ -151,7 +151,7 @@ class CustomBestModelCallback(BaseCallback):
 
             if np.mean(solo_reward_list) > self.best_reward_solo:
                 self.best_reward_solo = np.mean(solo_reward_list)
-                path = osp.join(self.save_path, f"{self.name_prefix}_solo_{str(int(mean_reward)).replace('.', '_')}")
+                path = osp.join(self.save_path, f"{self.name_prefix}_solo_{str(int(self.best_reward_solo)).replace('.', '_')}")
                 self.model.save(path)
                 print(f"Saving solo model checkpoint to {path}")
 
