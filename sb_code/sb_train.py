@@ -46,7 +46,7 @@ custom_params = {
     'USING_NORMALIZATION' : True,
     'discrete': True,
     # TRAINING
-    'eval_freq': 2000, # All are steps running
+    'eval_freq': 5000, # All are steps running
     'save_freq': 30000,
     'eval_episodes': 5,
     'restore': False,

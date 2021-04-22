@@ -70,81 +70,23 @@ class CustomBestModelCallback(BaseCallback):
 
         self.training_env = self.model.get_env()
 
-    def setup_env(self, custom_params, seed):
-
-        env = DuckietownEnv(
-            map_name=custom_params['map'],
-            domain_rand=False,
-            draw_bbox=False,
-            max_steps=1500,
-            seed=seed
-        )
-
-        env = ResizeWrapper(env, shape=(60, 80, 3))
-
-        if custom_params['discrete']:
-            env = DiscreteWrapper(env)
-
-        if custom_params['USING_VAE']:
-            env = NormalizeWrapper(env)  # No need to use normalization if image
-            env = FinalLayerObservationWrapper(env, latent_dim=custom_params['VAE_LATENT_DIM'],
-                                               map=custom_params['map'])
-
-        # Step 3.b. To make Vectorized Environment to be able to use Normalize or FramStack (Optional)
-        env = make_vec_env(lambda: env, n_envs=1)
-        # Step 3.b Passing through Normalization and stack frame (Optional)
-
-        env = VecFrameStack(env, n_stack=custom_params['FRAME_STACK'])  # Use 1 for now because we use image
-        if not custom_params['USING_VAE']:
-            env = VecTransposeImage(env)  # Uncomment if using 3d obs
-
-        if custom_params['USING_NORMALIZATION']:
-            env = VecNormalize(env, norm_obs=True, norm_reward=False)  # If using normalize, must save
-
-        return env
-
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0 and self.n_calls >= 50000: # 50000 is learning_start
-            seed_lists = self.seeds_dict[self.custom_params['map']][0:5]
-            solo_reward_list, solo_length_list = [], []
 
-            for i in range(len(seed_lists)):
-                eval_env = self.setup_env(self.custom_params, seed=seed_lists[i])
+            episode_lengths = self.eval_env.unwrapped.envs[0].get_episode_lengths()
+            episode_rewards = self.eval_env.unwrapped.envs[0].get_episode_rewards()
 
-                if not isinstance(eval_env, VecEnv):
-                    eval_env = DummyVecEnv([lambda: eval_env])
+            solo_reward_list = episode_rewards[-self.custom_params['eval_episodes']:]
+            solo_length_list = episode_lengths[-self.custom_params['eval_episodes']:]
 
-                if isinstance(eval_env, VecEnv):
-                    assert eval_env.num_envs == 1, "You must pass only one environment for evaluation"
-
-                if not isinstance(self.training_env, type(self.eval_env)):
-                    raise ValueError(
-                        "Training and eval env are not of the same type" f"{self.training_env} != {self.eval_env}")
-
-                sync_envs_normalization(self.training_env, eval_env)
-
-                episode_rewards, episode_lengths = evaluate_policy(
-                    self.model,
-                    eval_env,
-                    n_eval_episodes=1,
-                    render=False,
-                    deterministic=True,
-                    return_episode_rewards=True,
-                    warn=False
-                )
-                self.reward_list.extend(episode_rewards)
-                self.length_list.extend(episode_lengths)
-                solo_reward_list.extend(episode_rewards)
-                solo_length_list.extend(episode_lengths)
-
-            mean_reward = np.mean(self.reward_list[-500:])
-            std_reward = np.std(self.reward_list[-500:])
-            mean_length = np.mean(self.length_list[-500:])
-            std_length = np.std(self.length_list[-500:])
+            mean_reward = np.mean(episode_rewards[-500:])
+            std_reward = np.std(episode_rewards[-500:])
+            mean_length = np.mean(episode_lengths[-500:])
+            std_length = np.std(episode_lengths[-500:])
 
             if mean_reward > self.best_reward_all:
                 path = os.path.join(self.save_path, f"{self.name_prefix}")
-                self.best_reward = mean_reward
+                self.best_reward_all = mean_reward
                 self.model.save(path)
                 print(f"Saving model checkpoint to {path}")
                 self.model.save(osp.join(self.save_path, f"{self.name_prefix}_{str(int(mean_reward)).replace('.', '_')}"))
@@ -156,7 +98,7 @@ class CustomBestModelCallback(BaseCallback):
                 print(f"Saving solo model checkpoint to {path}")
 
             print(f'Custom Eval timesteps {self.n_calls} meanReward: {mean_reward:.2f} stdReward: {std_reward:.2f} '
-                  f'meanLength {mean_length:.2f} stdLength: {std_length:.2f} bestReward: {self.best_reward:.2f} '
+                  f'meanLength {mean_length:.2f} stdLength: {std_length:.2f} bestReward: {self.best_reward_all:.2f} '
                   f'rewardSolo {np.mean(solo_reward_list):.2f} lengthSolo {np.mean(solo_length_list):.2f} '
                   f'bestRewardSolo: {self.best_reward_solo:.2f}')
 
@@ -165,9 +107,10 @@ class CustomBestModelCallback(BaseCallback):
             self.custom_logger.log_tabular('std_reward', std_reward)
             self.custom_logger.log_tabular('mean_length', mean_length)
             self.custom_logger.log_tabular('std_length', std_length)
-            self.custom_logger.log_tabular('best_reward', self.best_reward)
+            self.custom_logger.log_tabular('best_reward', self.best_reward_all)
             self.custom_logger.log_tabular('mean_reward_solo', np.mean(solo_reward_list))
             self.custom_logger.log_tabular('best_reward_solo', self.best_reward_solo)
+            self.custom_logger.log_tabular('explr_rate', self.model.exploration_rate)
 
             self.custom_logger.dump_tabular()
             if self.custom_params['algo'] == 'dqn':
